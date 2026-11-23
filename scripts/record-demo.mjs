@@ -35,7 +35,7 @@ async function run() {
   });
 
   const page = await context.newPage();
-  page.setDefaultTimeout(6000);
+  page.setDefaultTimeout(15000);
 
   // Inject Custom HUD Overlay & Animated Virtual Cursor
   await page.addInitScript(() => {
@@ -166,7 +166,7 @@ async function run() {
   // SCENE 1: Executive Dashboard & KPIs
   // ==========================================
   console.log('Scene 1: Dashboard Cockpit');
-  await page.goto('http://127.0.0.1:3000/dashboard', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:3000/dashboard', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
   await setHUD('📊 Executive Cockpit', 'Real-time Cash Position, Receivables & Intelligent Alerts');
   await moveCursor(340, 180);
