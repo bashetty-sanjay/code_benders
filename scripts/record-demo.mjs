@@ -1,390 +1,348 @@
+/**
+ * CashPilot AI — Full Demo Recording Script (v2)
+ * Updated for: smooth page transitions, all 7 screens, all major functions.
+ * Scenes: Dashboard → Who Owes Me → Bad Day Triage → Forecast → Simulator →
+ *         Invoices (filter+create) → Bills (filter+create) → Customers (ledger) →
+ *         AI Assistant → Settings → Grand Finale
+ */
+
 import { chromium } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-const OUTPUT_DIR = path.resolve('demo_recordings');
-const FINAL_VIDEO_NAME = 'codebenders_demo.webm';
-const ARTIFACTS_DIR = 'C:\\Users\\Sanjay\\.gemini\\antigravity\\brain\\31f065a3-77f9-4e25-958b-94c530d56f80';
+const BASE_URL       = 'http://127.0.0.1:3000';
+const OUTPUT_DIR     = path.resolve('demo_recordings');
+const FINAL_NAME     = 'codebenders_demo.webm';
+const ARTIFACTS_DIR  = 'C:\\Users\\Sanjay\\.gemini\\antigravity\\brain\\31f065a3-77f9-4e25-958b-94c530d56f80';
+
+/* ───────────────────────── helpers ─────────────────────────────── */
 
 async function run() {
-  if (!fs.existsSync(OUTPUT_DIR)) {
-    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  // Prep output dir
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  for (const f of fs.readdirSync(OUTPUT_DIR)) {
+    if (f.endsWith('.webm')) try { fs.unlinkSync(path.join(OUTPUT_DIR, f)); } catch (_) {}
   }
 
-  // Clear previous demo videos in folder
-  const existingFiles = fs.readdirSync(OUTPUT_DIR);
-  for (const file of existingFiles) {
-    if (file.endsWith('.webm')) {
-      try { fs.unlinkSync(path.join(OUTPUT_DIR, file)); } catch (_) {}
-    }
-  }
-
-  console.log('Launching Chrome for Full Walkthrough Demo (1280x720 HD)...');
+  console.log('🎬  Launching Chrome (1280×720 HD)…');
   const browser = await chromium.launch({
     executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    headless: true
+    headless: true,
+    args: ['--disable-web-security', '--no-sandbox'],
   });
 
   const context = await browser.newContext({
-    recordVideo: {
-      dir: OUTPUT_DIR,
-      size: { width: 1280, height: 720 }
-    },
-    viewport: { width: 1280, height: 720 },
-    deviceScaleFactor: 1
+    recordVideo: { dir: OUTPUT_DIR, size: { width: 1280, height: 720 } },
+    viewport:    { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
   });
 
   const page = await context.newPage();
-  page.setDefaultTimeout(15000);
+  page.setDefaultTimeout(18000);
 
-  // Inject Custom HUD Overlay & Animated Virtual Cursor
+  /* Inject HUD + virtual cursor on every page */
   await page.addInitScript(() => {
     window.addEventListener('DOMContentLoaded', () => {
-      // Create HUD Pill
+      /* ── HUD pill ── */
       const hud = document.createElement('div');
-      hud.id = 'demo-hud';
+      hud.id = 'cp-hud';
       hud.style.cssText = `
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 999999;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        background: rgba(15, 23, 42, 0.95);
-        border: 1px solid rgba(99, 102, 241, 0.5);
-        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.85), 0 0 20px rgba(99, 102, 241, 0.3);
-        padding: 10px 22px;
-        border-radius: 9999px;
-        backdrop-filter: blur(16px);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        color: #fff;
-        pointer-events: none;
-        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        position:fixed; bottom:28px; left:50%; transform:translateX(-50%);
+        z-index:2147483647; display:flex; align-items:center; gap:12px;
+        background:rgba(10,15,30,0.96);
+        border:1px solid rgba(99,102,241,0.55);
+        box-shadow:0 12px 40px -6px rgba(0,0,0,0.9),0 0 24px rgba(99,102,241,0.25);
+        padding:11px 26px; border-radius:9999px;
+        backdrop-filter:blur(20px);
+        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+        color:#fff; pointer-events:none;
+        transition:all 0.3s cubic-bezier(0.16,1,0.3,1);
+        white-space:nowrap;
       `;
-
       hud.innerHTML = `
-        <div style="width: 10px; height: 10px; border-radius: 50%; background: #6366f1; box-shadow: 0 0 12px #6366f1; animation: pulse 2s infinite;"></div>
+        <div style="width:9px;height:9px;border-radius:50%;background:#6366f1;
+          box-shadow:0 0 10px #6366f1;flex-shrink:0;"></div>
         <div>
-          <div id="demo-hud-title" style="font-size: 13px; font-weight: 700; letter-spacing: -0.01em; color: #f8fafc;">CashPilot AI · BackOffice</div>
-          <div id="demo-hud-sub" style="font-size: 11px; font-weight: 500; color: #94a3b8;">Initializing...</div>
+          <div id="cp-hud-title" style="font-size:13px;font-weight:700;
+            letter-spacing:-0.01em;color:#f8fafc;">CashPilot AI</div>
+          <div id="cp-hud-sub"   style="font-size:11px;font-weight:500;
+            color:#94a3b8;margin-top:1px;">Initializing…</div>
         </div>
       `;
       document.body.appendChild(hud);
 
-      // Create Virtual Pointer
-      const pointer = document.createElement('div');
-      pointer.id = 'demo-cursor';
-      pointer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 22px;
-        height: 22px;
-        z-index: 10000000;
-        pointer-events: none;
-        transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease;
-        opacity: 0;
+      /* ── Virtual pointer ── */
+      const cur = document.createElement('div');
+      cur.id = 'cp-cursor';
+      cur.style.cssText = `
+        position:fixed;top:0;left:0;width:22px;height:22px;
+        z-index:2147483646;pointer-events:none;
+        transition:transform 0.16s cubic-bezier(0.2,0,0,1),opacity 0.3s ease;
+        opacity:0;
       `;
-      pointer.innerHTML = `
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="filter: drop-shadow(0 2px 5px rgba(0,0,0,0.9));">
-          <path d="M4 4L11 20L14 13L21 10L4 4Z" fill="#6366f1" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round"/>
-        </svg>
-      `;
-      document.body.appendChild(pointer);
+      cur.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+        style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.9));">
+        <path d="M4 4L11 20L14 13L21 10L4 4Z" fill="#6366f1" stroke="#fff"
+          stroke-width="1.8" stroke-linejoin="round"/>
+      </svg>`;
+      document.body.appendChild(cur);
     });
   });
 
-  // Helpers
-  async function setHUD(title, sub) {
-    await page.evaluate(({ title, sub }) => {
-      const titleEl = document.getElementById('demo-hud-title');
-      const subEl = document.getElementById('demo-hud-sub');
-      const hud = document.getElementById('demo-hud');
-      if (titleEl && subEl && hud) {
-        titleEl.textContent = title;
-        subEl.textContent = sub;
-        hud.style.transform = 'translateX(-50%) scale(1.03)';
-        setTimeout(() => {
-          hud.style.transform = 'translateX(-50%) scale(1)';
-        }, 180);
-      }
-    }, { title, sub });
+  /* ── Helper functions ── */
+
+  async function hud(title, sub) {
+    await page.evaluate(({ t, s }) => {
+      const te = document.getElementById('cp-hud-title');
+      const se = document.getElementById('cp-hud-sub');
+      const h  = document.getElementById('cp-hud');
+      if (te) te.textContent = t;
+      if (se) se.textContent = s;
+      if (h)  { h.style.transform = 'translateX(-50%) scale(1.04)';
+                setTimeout(() => { h.style.transform = 'translateX(-50%) scale(1)'; }, 200); }
+    }, { t: title, s: sub });
   }
 
   async function moveCursor(x, y) {
     await page.evaluate(({ x, y }) => {
-      const c = document.getElementById('demo-cursor');
-      if (c) {
-        c.style.opacity = '1';
-        c.style.transform = `translate(${x}px, ${y}px)`;
-      }
+      const c = document.getElementById('cp-cursor');
+      if (c) { c.style.opacity = '1'; c.style.transform = `translate(${x}px,${y}px)`; }
     }, { x, y });
-    await page.mouse.move(x, y, { steps: 8 });
+    await page.mouse.move(x, y, { steps: 10 });
   }
 
-  async function moveCursorTo(selector, offsetX = 0, offsetY = 0) {
+  async function locatorCenter(selector) {
     try {
-      const loc = page.locator(selector).first();
-      const box = await loc.boundingBox({ timeout: 3000 });
-      if (box) {
-        const targetX = box.x + box.width / 2 + offsetX;
-        const targetY = box.y + box.height / 2 + offsetY;
-        await moveCursor(targetX, targetY);
-      }
+      const box = await page.locator(selector).first().boundingBox({ timeout: 4000 });
+      if (box) return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     } catch (_) {}
+    return null;
   }
 
-  async function clickWithEffect(selector) {
-    await moveCursorTo(selector);
-    await page.waitForTimeout(100);
+  async function moveTo(selector) {
+    const pt = await locatorCenter(selector);
+    if (pt) await moveCursor(pt.x, pt.y);
+  }
+
+  async function click(selector, { soft = false } = {}) {
+    await moveTo(selector);
+    await page.waitForTimeout(90);
+    // cursor press effect
     await page.evaluate(() => {
-      const c = document.getElementById('demo-cursor');
-      if (c) c.style.transform += ' scale(0.85)';
+      const c = document.getElementById('cp-cursor');
+      if (c) { const t = c.style.transform; c.style.transform = t + ' scale(0.82)'; }
     });
-    try {
-      await page.click(selector, { timeout: 3000 });
-    } catch (_) {}
+    try { await page.click(selector, { timeout: 4000 }); } catch (e) { if (!soft) console.warn('click miss:', selector, e.message); }
     await page.waitForTimeout(80);
     await page.evaluate(() => {
-      const c = document.getElementById('demo-cursor');
-      if (c) c.style.transform = c.style.transform.replace(' scale(0.85)', '');
+      const c = document.getElementById('cp-cursor');
+      if (c) c.style.transform = c.style.transform.replace(/ scale\(0\.82\)/, '');
     });
   }
 
-  async function smoothScroll(distance, steps = 8) {
+  async function typeInto(selector, text, { clear = true } = {}) {
+    await click(selector);
+    if (clear) await page.fill(selector, '');
+    await page.type(selector, text, { delay: 45 });
+  }
+
+  async function scroll(px, steps = 10) {
     for (let i = 0; i < steps; i++) {
-      await page.evaluate((d) => window.scrollBy(0, d), distance / steps);
-      await page.waitForTimeout(30);
+      await page.evaluate(d => window.scrollBy(0, d), px / steps);
+      await page.waitForTimeout(28);
     }
   }
 
-  console.log('--- Starting Demo Walkthrough ---');
+  async function wait(ms) { await page.waitForTimeout(ms); }
 
-  // ==========================================
-  // SCENE 1: Executive Dashboard & KPIs
-  // ==========================================
-  console.log('Scene 1: Dashboard Cockpit');
-  await page.goto('http://127.0.0.1:3000/dashboard', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(600);
-  await setHUD('📊 Executive Cockpit', 'Real-time Cash Position, Receivables & Intelligent Alerts');
-  await moveCursor(340, 180);
-  await page.waitForTimeout(500);
-  await moveCursor(640, 180);
-  await page.waitForTimeout(500);
-  await moveCursor(940, 180);
-  await page.waitForTimeout(600);
+  async function nav(url, label) {
+    console.log(`  → ${label}`);
+    await page.goto(`${BASE_URL}${url}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await wait(900); // let page-enter animation play
+  }
 
-  // ==========================================
-  // SCENE 2: Who Owes Me Ageing Matrix
-  // ==========================================
-  console.log('Scene 2: Who Owes Me Ageing Matrix');
-  await setHUD('⏰ Who Owes Me & Since When?', 'Live Debtor Ageing Matrix (0–15d, 16+d Critical) & 1-Click WhatsApp');
-  await smoothScroll(380, 10);
-  await page.waitForTimeout(500);
+  async function navLink(href) {
+    await click(`aside a[href="${href}"]`, { soft: true });
+    await wait(900);
+  }
 
-  // Move over 16+ Days Critical ageing tab
-  await moveCursor(640, 320);
-  await page.waitForTimeout(500);
+  /* ═══════════════════════════════════════════════════════════════
+      RECORDING START
+     ═══════════════════════════════════════════════════════════════ */
 
-  // Hover over the WhatsApp Chase link
-  await moveCursorTo('a[title="Open WhatsApp with drafted reminder"]');
-  await page.waitForTimeout(400);
+  console.log('\n🎬  SCENE 1 — Executive Dashboard');
+  await nav('/dashboard', 'Dashboard');
+  await hud('📊 Executive Cockpit', 'Real-time Cash Position · Receivables · Smart Alerts');
+  await wait(600);
+  // Pan cursor over KPI cards
+  for (const x of [340, 530, 730, 930]) {
+    await moveCursor(x, 190); await wait(350);
+  }
+  await moveCursor(640, 190); await wait(400);
 
-  // Hover over Copy Reminder button and click
-  await clickWithEffect('button[title="Copy drafted reminder script"]');
-  await page.waitForTimeout(700);
+  /* ── SCENE 2: Who Owes Me ─────────────────────────────────────── */
+  console.log('\n🎬  SCENE 2 — Who Owes Me');
+  await hud('⏰ Who Owes Me & Since When?', 'Live Debtor Ageing · 0-15d · 16+ Critical');
+  await scroll(360, 10); await wait(500);
+  await moveCursor(640, 320); await wait(500);
+  // hover WhatsApp link
+  await moveTo('a[title="Open WhatsApp with drafted reminder"]'); await wait(500);
+  // click Copy Reminder
+  await click('button[title="Copy drafted reminder script"]', { soft: true }); await wait(700);
 
-  // ==========================================
-  // SCENE 3: Bad Day Triage Mode
-  // ==========================================
-  console.log('Scene 3: Bad Day Triage Mode');
-  await smoothScroll(-350, 8);
-  await page.waitForTimeout(300);
-  await setHUD('🚨 Bad Day Triage Mode', 'Instant Action when Multiple Clients are Late at Once');
-  await clickWithEffect('button:has-text("Bad Day Triage Mode")');
-  await page.waitForTimeout(800);
+  /* ── SCENE 3: Bad Day Triage ──────────────────────────────────── */
+  console.log('\n🎬  SCENE 3 — Bad Day Triage Mode');
+  await scroll(-360, 8); await wait(300);
+  await hud('🚨 Bad Day Triage Mode', 'Instant bulk-action when multiple clients are late');
+  await click('button:has-text("Bad Day Triage Mode")', { soft: true }); await wait(900);
+  await moveCursor(640, 360); await wait(500);
+  await click('button:has-text("Copy All Reminders")', { soft: true }); await wait(600);
+  await click('button:has-text("Close")', { soft: true }); await wait(500);
 
-  // Inspect the triage modal
-  await moveCursor(640, 360);
-  await page.waitForTimeout(500);
+  /* ── SCENE 4: Cash Forecast ───────────────────────────────────── */
+  console.log('\n🎬  SCENE 4 — Cash Forecast (30/60/90 Day)');
+  await hud('📈 30–90 Day Cash Forecast', 'Visual Runway Projection · Bills vs Receivables');
+  await navLink('/forecast');
+  await wait(600);
+  for (const label of ['60 Days', '90 Days', '30 Days']) {
+    await click(`a:has-text("${label}")`, { soft: true }); await wait(700);
+  }
+  await moveCursor(640, 320); await wait(500);
 
-  // Click Copy All Reminders in triage
-  await clickWithEffect('button:has-text("Copy All Reminders")');
-  await page.waitForTimeout(700);
+  /* ── SCENE 5: What-If Simulator ──────────────────────────────── */
+  console.log('\n🎬  SCENE 5 — What-If Delay Simulator');
+  await hud('⚡ What-If Scenario Simulator', 'Live impact of delayed client payments');
+  await scroll(400, 10); await wait(500);
+  await click('button:has-text("+15 Days (Scenario)")', { soft: true }); await wait(500);
+  await click('button:has-text("Run Delay Simulation")', { soft: true }); await wait(1200);
+  await moveCursor(640, 500); await wait(700);
+  await click('button:has-text("Reset")', { soft: true }); await wait(500);
 
-  // Close Triage modal
-  await clickWithEffect('button:has-text("Close")');
-  await page.waitForTimeout(500);
-
-  // ==========================================
-  // SCENE 4: Cash Forecast & Horizons
-  // ==========================================
-  console.log('Scene 4: Cash Forecast');
-  await setHUD('📈 30–90 Day Cash Forecast', 'Visual Runway Projection across Invoices & Bills');
-  await clickWithEffect('aside a[href="/forecast"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(700);
-
-  // Switch Horizons: 60 Days, 90 Days, 30 Days
-  await clickWithEffect('a:has-text("60 Days")');
-  await page.waitForTimeout(600);
-  await clickWithEffect('a:has-text("90 Days")');
-  await page.waitForTimeout(600);
-  await clickWithEffect('a:has-text("30 Days")');
-  await page.waitForTimeout(600);
-
-  // ==========================================
-  // SCENE 5: What-If Delay Simulator
-  // ==========================================
-  console.log('Scene 5: What-If Simulator');
-  await setHUD('⚡ What-If Scenario Simulator', 'Live Impact Analysis of Delayed Key Client Payments');
-  await smoothScroll(420, 10);
-  await page.waitForTimeout(500);
-
-  // Click preset +15 Days Late
-  await clickWithEffect('button:has-text("+15 Days (Scenario)")');
-  await page.waitForTimeout(600);
-
-  // Run Delay Simulation
-  await clickWithEffect('button:has-text("Run Delay Simulation")');
-  await page.waitForTimeout(1000);
-
-  // Show Simulation Outcome card
-  await moveCursor(640, 520);
-  await page.waitForTimeout(800);
-
-  // Reset simulator
-  await clickWithEffect('button:has-text("Reset")');
-  await page.waitForTimeout(500);
-
-  // ==========================================
-  // SCENE 6: Invoices Directory & Receivables
-  // ==========================================
-  console.log('Scene 6: Invoices');
-  await setHUD('📄 Invoices & Receivables', 'Lifecycle Management, Payment Status & WhatsApp Links');
-  await clickWithEffect('aside a[href="/invoices"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(600);
-
+  /* ── SCENE 6: Invoices List ───────────────────────────────────── */
+  console.log('\n🎬  SCENE 6 — Invoices & Receivables');
+  await hud('📄 Invoices & Receivables', 'Lifecycle · Status Filters · WhatsApp Chase Links');
+  await navLink('/invoices');
+  await wait(500);
   // Filter tabs
-  await clickWithEffect('a:has-text("Unpaid & Overdue")');
-  await page.waitForTimeout(600);
-  await clickWithEffect('a:has-text("Paid")');
-  await page.waitForTimeout(600);
-  await clickWithEffect('a:has-text("All")');
-  await page.waitForTimeout(500);
+  for (const tab of ['Unpaid & Overdue', 'Paid', 'All']) {
+    await click(`a:has-text("${tab}")`, { soft: true }); await wait(600);
+  }
+  // Hover a row
+  await moveCursor(640, 360); await wait(400);
+  // Scan down table
+  await scroll(200, 6); await wait(400);
+  await scroll(-200, 6); await wait(300);
 
-  // ==========================================
-  // SCENE 7: Low-Friction Invoice Builder
-  // ==========================================
-  console.log('Scene 7: New Invoice');
-  await setHUD('🚀 Low-Friction Invoice Builder', 'Quick Service Presets & 1-Click Payment Terms');
-  await clickWithEffect('a:has-text("New invoice")');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(600);
+  /* ── SCENE 7: Create New Invoice ─────────────────────────────── */
+  console.log('\n🎬  SCENE 7 — New Invoice Builder');
+  await hud('🚀 Low-Friction Invoice Builder', 'Service Presets · Smart Due Dates · PDF Export');
+  await click('a:has-text("New invoice")', { soft: true });
+  await wait(800);
+  // Try quick-service preset buttons
+  for (const preset of ['UI/UX Sprint', 'Web Dev', 'Consulting']) {
+    await click(`button:has-text("${preset}")`, { soft: true }); await wait(400);
+  }
+  // Set due date preset
+  await click('button:has-text("+15 Days")', { soft: true }); await wait(500);
+  await scroll(260, 6); await wait(600);
+  // Hover submit
+  await moveTo('button[type="submit"]'); await wait(500);
+  await scroll(-260, 6); await wait(300);
 
-  // Use service template preset
-  await clickWithEffect('button:has-text("UI/UX Sprint")');
-  await page.waitForTimeout(500);
+  /* ── SCENE 8: Bills & Expenses ───────────────────────────────── */
+  console.log('\n🎬  SCENE 8 — Bills & Outflow');
+  await hud('💳 Bills & Outflow Schedule', 'Monthly Recurring Overhead · 1-Click Settlement');
+  await navLink('/bills');
+  await wait(600);
+  await moveCursor(640, 320); await wait(500);
+  await scroll(200, 6); await wait(500);
+  // Hover a Mark Paid button
+  await moveTo('button:has-text("Mark Paid")', ); await wait(500);
+  await scroll(-200, 6); await wait(300);
+  // Add new bill
+  await hud('➕ Add New Bill', 'Log recurring expense in one click');
+  await click('a:has-text("Add bill")', { soft: true }); await wait(700);
+  await scroll(200, 6); await wait(400);
+  await scroll(-200, 6); await wait(300);
 
-  // Select quick due date (+15d)
-  await clickWithEffect('button:has-text("+15 Days")');
-  await page.waitForTimeout(600);
-  await smoothScroll(240, 6);
-  await page.waitForTimeout(600);
+  /* ── SCENE 9: Customers Directory ────────────────────────────── */
+  console.log('\n🎬  SCENE 9 — Client Directory & Ledger');
+  await hud('👥 Client Ledgers & Accounts', 'Individual debtor profile · Invoiced · History');
+  await navLink('/customers');
+  await wait(600);
+  await moveCursor(640, 320); await wait(400);
+  // Open first customer detail
+  await click('table a:has-text("View")', { soft: true });
+  await wait(800);
+  await scroll(280, 8); await wait(600);
+  await moveCursor(640, 400); await wait(400);
+  await scroll(-280, 8); await wait(300);
 
-  // ==========================================
-  // SCENE 8: Bills & Overhead Payables
-  // ==========================================
-  console.log('Scene 8: Bills & Expenses');
-  await setHUD('💳 Bills & Outflow Schedule', 'Monthly Recurring Overhead & 1-Click Settlement');
-  await clickWithEffect('aside a[href="/bills"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(700);
-  await moveCursor(640, 320);
-  await page.waitForTimeout(600);
+  /* ── SCENE 10: AI Assistant ───────────────────────────────────── */
+  console.log('\n🎬  SCENE 10 — Financial AI Assistant');
+  await hud('🤖 Financial Intelligence AI', 'Natural-language runway Q&A · Invoice generation');
+  await navLink('/assistant');
+  await wait(700);
+  // Click a suggestion chip
+  await click('button:has-text("Check money owed")', { soft: true }); await wait(1400);
+  await moveCursor(640, 400); await wait(500);
+  // Type a custom question
+  await typeInto('textarea', 'What is my cash runway this month?', { clear: true });
+  await wait(400);
+  await click('button[type="submit"]', { soft: true }); await wait(1600);
+  await moveCursor(640, 420); await wait(500);
 
-  // ==========================================
-  // SCENE 9: Client Ledger
-  // ==========================================
-  console.log('Scene 9: Client Directory & Ledger');
-  await setHUD('👥 Client Ledgers & Accounts', 'Individual Debtor Profile, Total Invoiced & Payment History');
-  await clickWithEffect('aside a[href="/customers"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(600);
+  /* ── SCENE 11: Settings ───────────────────────────────────────── */
+  console.log('\n🎬  SCENE 11 — Business Settings');
+  await hud('🏢 Business Profile & Banking', 'GSTIN · Tax Identifiers · UPI Handle · Default Terms');
+  await navLink('/settings');
+  await wait(700);
+  await scroll(200, 6); await wait(500);
+  await moveCursor(640, 400); await wait(400);
+  await scroll(-200, 6); await wait(300);
 
-  // Click on top client view link
-  await clickWithEffect('table a:has-text("View")');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(700);
-  await smoothScroll(280, 8);
-  await page.waitForTimeout(700);
+  /* ── FINALE ───────────────────────────────────────────────────── */
+  console.log('\n🎬  FINALE — Grand Dashboard Return');
+  await hud('✨ Complete One-Person Back Office', 'CashPilot AI · Enterprise Studio · v2.0');
+  await navLink('/dashboard');
+  await wait(500);
+  // Pan all KPIs one more time
+  for (const x of [340, 530, 730, 930]) {
+    await moveCursor(x, 190); await wait(300);
+  }
+  await moveCursor(640, 360); await wait(1800);
 
-  // ==========================================
-  // SCENE 10: Financial AI Assistant
-  // ==========================================
-  console.log('Scene 10: Assistant');
-  await setHUD('🤖 Financial Intelligence AI', 'Natural-Language Runway Q&A & Invoice Generation');
-  await clickWithEffect('aside a[href="/assistant"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(700);
-
-  // Click suggestion chip
-  await clickWithEffect('button:has-text("Check money owed")');
-  await page.waitForTimeout(1200);
-
-  // ==========================================
-  // SCENE 11: Enterprise Settings & Finale
-  // ==========================================
-  console.log('Scene 11: Settings & Finale');
-  await setHUD('🏢 Business Profile & Banking', 'GSTIN Tax Identifiers, Default Terms & UPI Handle');
-  await clickWithEffect('aside a[href="/settings"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(700);
-
-  // Return to Dashboard for Finale
-  await setHUD('✨ Complete One-Person Back Office', 'CashPilot AI · Enterprise Studio Edition');
-  await clickWithEffect('aside a[href="/dashboard"]');
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(1600);
-
-  console.log('Closing recording session to flush video stream...');
+  /* ═══════════════════════════════════════════════════════════════
+      CLOSE & SAVE
+     ═══════════════════════════════════════════════════════════════ */
+  console.log('\n⏹  Closing recording session…');
   await page.close();
   await context.close();
   await browser.close();
 
-  // Find generated webm file and rename to codebenders_demo.webm
+  // Find the recorded webm and rename/copy
   const files = fs.readdirSync(OUTPUT_DIR).filter(f => f.endsWith('.webm'));
-  if (files.length > 0) {
-    const rawVideo = path.join(OUTPUT_DIR, files[0]);
-    const finalVideo = path.join(OUTPUT_DIR, FINAL_VIDEO_NAME);
-    if (rawVideo !== finalVideo) {
-      if (fs.existsSync(finalVideo)) fs.unlinkSync(finalVideo);
-      fs.renameSync(rawVideo, finalVideo);
+  if (files.length === 0) { console.error('❌  No video file produced!'); process.exit(1); }
+
+  const raw   = path.join(OUTPUT_DIR, files[0]);
+  const final = path.join(OUTPUT_DIR, FINAL_NAME);
+  if (raw !== final) { if (fs.existsSync(final)) fs.unlinkSync(final); fs.renameSync(raw, final); }
+  console.log('✅  Demo video saved:', final);
+
+  // Copy to project root
+  const root = path.resolve(FINAL_NAME);
+  fs.copyFileSync(final, root);
+  console.log('✅  Copied to project root:', root);
+
+  // Copy to Antigravity artifacts dir
+  try {
+    if (fs.existsSync(ARTIFACTS_DIR)) {
+      fs.copyFileSync(final, path.join(ARTIFACTS_DIR, FINAL_NAME));
+      console.log('✅  Copied to artifacts dir');
     }
-    console.log('SUCCESS! Demo video saved at:', finalVideo);
+  } catch (_) {}
 
-    // Also copy to project root
-    const rootTarget = path.resolve(FINAL_VIDEO_NAME);
-    fs.copyFileSync(finalVideo, rootTarget);
-    console.log('Copied to project root:', rootTarget);
-
-    // Also copy to artifacts directory if available
-    try {
-      if (fs.existsSync(ARTIFACTS_DIR)) {
-        const artifactTarget = path.join(ARTIFACTS_DIR, FINAL_VIDEO_NAME);
-        fs.copyFileSync(finalVideo, artifactTarget);
-        console.log('Copied to artifacts directory:', artifactTarget);
-      }
-    } catch (_) {}
-  } else {
-    console.error('No video file produced.');
-  }
+  console.log('\n🎉  Recording complete! codebenders_demo.webm is ready.');
 }
 
-run().catch((err) => {
-  console.error('Error during demo recording:', err);
-  process.exit(1);
-});
+run().catch(err => { console.error('Fatal:', err); process.exit(1); });
